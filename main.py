@@ -1,10 +1,45 @@
+import json
+from pathlib import Path
+
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
 app = FastAPI()
 
+ARCHIVO = Path(__file__).parent / "datos" / "libros.json"
+CAMPOS = {"id", "titulo", "autor", "anio", "disponible"}
+
 libros = []
 contador_id = 1
+
+
+def cargar():
+    global contador_id
+    libros.clear()
+    contador_id = 1
+    try:
+        with open(ARCHIVO, "r", encoding="utf-8") as f:
+            datos = json.load(f)
+        if not isinstance(datos, list):
+            return
+        for d in datos:
+            if not isinstance(d, dict) or not CAMPOS <= d.keys() or not isinstance(d["id"], int):
+                return
+        libros.extend(datos)
+        libros.sort(key=lambda l: l["id"])
+        if libros:
+            contador_id = max(l["id"] for l in libros) + 1
+    except (OSError, ValueError):
+        pass
+
+
+def guardar():
+    ARCHIVO.parent.mkdir(parents=True, exist_ok=True)
+    with open(ARCHIVO, "w", encoding="utf-8") as f:
+        json.dump(libros, f, ensure_ascii=False, indent=2)
+
+
+cargar()
 
 
 class LibroEntrada(BaseModel):
@@ -64,6 +99,7 @@ def crear_libro(datos: LibroEntrada):
     libro = {"id": contador_id, **datos.model_dump()}
     contador_id += 1
     libros.append(libro)
+    guardar()
     return libro
 
 
@@ -81,6 +117,7 @@ def reemplazar_libro(libro_id: int, datos: LibroEntrada):
     if libro is None:
         raise HTTPException(status_code=404, detail="Libro no encontrado")
     libro.update(datos.model_dump())
+    guardar()
     return libro
 
 
@@ -90,6 +127,7 @@ def actualizar_libro(libro_id: int, datos: LibroParcial):
     if libro is None:
         raise HTTPException(status_code=404, detail="Libro no encontrado")
     libro.update(datos.model_dump(exclude_unset=True))
+    guardar()
     return libro
 
 
@@ -99,3 +137,4 @@ def borrar_libro(libro_id: int):
     if libro is None:
         raise HTTPException(status_code=404, detail="Libro no encontrado")
     libros.remove(libro)
+    guardar()
